@@ -75,9 +75,9 @@ import { ColorTheme } from 'molstar/lib/mol-theme/color';
 //     }
 // }
 
-export type SupportedFormats = 'cif' | 'pdb'
+export type SupportedFormats = 'cif' | 'pdb' | 'ply'
 export interface LoadParams {
-    pdbId: string, 
+    pdbId: string,
     format?: SupportedFormats,
     isBinary?: boolean,
     assemblyId?: string,
@@ -92,10 +92,11 @@ export interface RepresentationStyle {
 }
 
 export namespace RepresentationStyle {
-    export type Entry = { 
-        hide?: boolean, 
-        kind?: StructureRepresentationRegistry.BuiltIn, 
-        coloring?: ColorTheme.BuiltIn }
+    export type Entry = {
+        hide?: boolean,
+        kind?: StructureRepresentationRegistry.BuiltIn,
+        coloring?: ColorTheme.BuiltIn
+    }
 }
 
 export function pointDistance(a: number[], b: number[]) {
@@ -105,11 +106,11 @@ export function pointDistance(a: number[], b: number[]) {
     return Math.sqrt(x * x + y * y + z * z);
 }
 
-export function getEdges(flatFacets: number[]){
+export function getEdges(flatFacets: number[]) {
     // to save only half of all triangles' edges // a bit ugly 
-    const edges = new Map<string, number[]>(); 
+    const edges = new Map<string, number[]>();
     for (let i = 0; i < flatFacets.length; i += 3) {
-        const sortedIndices = [flatFacets[i+0],flatFacets[i+1],flatFacets[i+2]].sort((a, b) => a - b); // ! numeric sort
+        const sortedIndices = [flatFacets[i + 0], flatFacets[i + 1], flatFacets[i + 2]].sort((a, b) => a - b); // ! numeric sort
         edges.set(`${sortedIndices[0]}-${sortedIndices[1]}`, [sortedIndices[0], sortedIndices[1]])
         edges.set(`${sortedIndices[0]}-${sortedIndices[2]}`, [sortedIndices[0], sortedIndices[2]])
         edges.set(`${sortedIndices[1]}-${sortedIndices[2]}`, [sortedIndices[1], sortedIndices[2]])
@@ -118,16 +119,16 @@ export function getEdges(flatFacets: number[]){
 }
 
 
-export function validPdbID(pdbId:any) {
+export function validPdbID(pdbId: any) {
     const validPDB = /^[0-9][0-9|a-z|A-Z]{3}$/;
-    return validPDB.test(pdbId) 
-  }
-  
+    return validPDB.test(pdbId)
+}
 
-export function validCathId(cathId:string){
+
+export function validCathId(cathId: string) {
     const validCathId = /^[0-9][0-9|a-z|A-Z]{3}[A-Z][0-9]{2}$/;
-    return validCathId.test(cathId)    
-  }
+    return validCathId.test(cathId)
+}
 
 export enum ProtrusionVisualLabel {
     NormalCaCb = 'Normal C-α, C-β',
@@ -162,8 +163,8 @@ export enum StateElements {
     HetVisual = 'het-visual',
     Het3DSNFG = 'het-3dsnfg',
     Water = 'water',
-    WaterVisual = 'water-visual',    
+    WaterVisual = 'water-visual',
     HetGroupFocus = 'het-group-focus',
     HetGroupFocusGroup = 'het-group-focus-group',
-  
+
 }

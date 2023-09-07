@@ -95,7 +95,7 @@ function InputArea({setCheckedKeys, setConvexHullKey, setRecalculateKey} : any) 
       <Form.Group controlId="formInputPdb" as={Row}>
         <Form.Label column sm={colwidth} className="pt-0 pr-0 text-center">Or </Form.Label>
         <Col sm={9} className="pl-0">
-        <Upload name="pdbFile" accept=".pdb, .ent, .cif, .mcif" maxCount={1} 
+        <Upload name="pdbFile" accept=".pdb, .ent, .cif, .mcif, .ply" maxCount={1} 
           //  onChange={onChange}
            beforeUpload={beforeUpload}
            onRemove={onRemove}
