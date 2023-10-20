@@ -1,43 +1,58 @@
-import { createPluginUI } from "molstar/lib/mol-plugin-ui";
-import { AnimateCameraSpin } from 'molstar/lib/mol-plugin-state/animation/built-in/camera-spin';
-import { createStructureRepresentationParams } from 'molstar/lib/mol-plugin-state/helpers/structure-representation-params';
-import { PluginStateObject, PluginStateObject as PSO } from 'molstar/lib/mol-plugin-state/objects';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms';
-import { PluginCommands } from 'molstar/lib/mol-plugin/commands';
-import { PluginState } from 'molstar/lib/mol-plugin/state';
+import { createPluginUI } from 'molstar/lib/mol-plugin-ui'
+import { AnimateCameraSpin } from 'molstar/lib/mol-plugin-state/animation/built-in/camera-spin'
+import { createStructureRepresentationParams } from 'molstar/lib/mol-plugin-state/helpers/structure-representation-params'
+import { PluginStateObject, PluginStateObject as PSO } from 'molstar/lib/mol-plugin-state/objects'
+import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms'
+import { PluginCommands } from 'molstar/lib/mol-plugin/commands'
+import { PluginState } from 'molstar/lib/mol-plugin/state'
 import { GeometryExport } from 'molstar/lib/extensions/geo-export'
 
-import { StateBuilder, StateObject, StateObjectCell, StateObjectRef, StateSelection, StateTransformer } from 'molstar/lib/mol-state';
-import { Asset } from 'molstar/lib/mol-util/assets';
-import { getEdges, LoadParams, pointDistance, ProtrusionVisualLabel, RepresentationStyle, StateElements, SupportedFormats } from './helpers';
-import { PluginConfig } from "molstar/lib/mol-plugin/config";
-import { Script } from "molstar/lib/mol-script/script";
-import { StructureSelection } from "molstar/lib/mol-model/structure/query";
-import { ColorNames } from "molstar/lib/mol-util/color/names";
-import { OrderedSet, Segmentation } from "molstar/lib/mol-data/int";
-import { ParamDefinition, ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition';
-import { DefaultPluginUISpec, PluginUISpec } from "molstar/lib/mol-plugin-ui/spec";
-import { PluginUIContext } from "molstar/lib/mol-plugin-ui/context";
-import { ResidueSet } from 'molstar/lib/mol-model/structure/model/properties/utils/residue-set';
-import { StructureQueryHelper } from "molstar/lib/mol-plugin-state/helpers/structure-query";
-import { ElementIndex, Structure, StructureElement, StructureProperties, Unit } from "molstar/lib/mol-model/structure";
-import { StateTransformParameters } from "molstar/lib/mol-plugin-ui/state/common";
-import { elementLabel } from 'molstar/lib/mol-theme/label';
+import {
+  StateBuilder,
+  StateObject,
+  StateObjectCell,
+  StateObjectRef,
+  StateSelection,
+  StateTransformer
+} from 'molstar/lib/mol-state'
+import { Asset } from 'molstar/lib/mol-util/assets'
+import {
+  getEdges,
+  LoadParams,
+  pointDistance,
+  ProtrusionVisualLabel,
+  RepresentationStyle,
+  StateElements,
+  SupportedFormats
+} from './helpers'
+import { PluginConfig } from 'molstar/lib/mol-plugin/config'
+import { Script } from 'molstar/lib/mol-script/script'
+import { StructureSelection } from 'molstar/lib/mol-model/structure/query'
+import { ColorNames } from 'molstar/lib/mol-util/color/names'
+import { OrderedSet, Segmentation } from 'molstar/lib/mol-data/int'
+import { ParamDefinition, ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition'
+import { DefaultPluginUISpec, PluginUISpec } from 'molstar/lib/mol-plugin-ui/spec'
+import { PluginUIContext } from 'molstar/lib/mol-plugin-ui/context'
+import { ResidueSet } from 'molstar/lib/mol-model/structure/model/properties/utils/residue-set'
+import { StructureQueryHelper } from 'molstar/lib/mol-plugin-state/helpers/structure-query'
+import { ElementIndex, Structure, StructureElement, StructureProperties, Unit } from 'molstar/lib/mol-model/structure'
+import { StateTransformParameters } from 'molstar/lib/mol-plugin-ui/state/common'
+import { elementLabel } from 'molstar/lib/mol-theme/label'
 
-import qh from 'quickhull3d';
+import qh from 'quickhull3d'
 
 import { ProtrusionVisualRef, validCathId } from './helpers'
-import { CreateSphere } from "./protrusion";
-import { CreateConvexHull } from "./convexhull";
-import { PluginSpec } from "molstar/lib/mol-plugin/spec";
-import { StructureComponentManager } from "molstar/lib/mol-plugin-state/manager/structure/component";
-import { Task } from "molstar/lib/mol-task";
-import { NeighborTableDataSource } from "./components/PeprmintControl";
-import { log } from "console";
+import { CreateSphere } from './protrusion'
+import { CreateConvexHull } from './convexhull'
+import { PluginSpec } from 'molstar/lib/mol-plugin/spec'
+import { StructureComponentManager } from 'molstar/lib/mol-plugin-state/manager/structure/component'
+import { Task } from 'molstar/lib/mol-task'
+import { NeighborTableDataSource } from './components/PeprmintControl'
+import { log } from 'console'
 
-export const LOW_DENSITY_THRESHOLD = 22;
-export const DISTANCE_CUTOFF = 10;  // 1 nm
-export const HYDROPHOBICS = ['LEU', 'ILE', 'PHE', 'TYR', 'TRP', 'CYS', 'MET'];
+export const LOW_DENSITY_THRESHOLD = 22
+export const DISTANCE_CUTOFF = 10 // 1 nm
+export const HYDROPHOBICS = ['LEU', 'ILE', 'PHE', 'TYR', 'TRP', 'CYS', 'MET']
 
 const URL_BCIF = (pdbId: string) => 'https://www.ebi.ac.uk/pdbe/entry-files/download/' + pdbId.toLowerCase() + '.bcif'
 // const URL_CIF = (pdbId: string) => 'https://www.ebi.ac.uk/pdbe/entry-files/download/' + pdbId + '.cif'
@@ -45,759 +60,848 @@ const URL_PDB = (pdbId: string) => 'https://www.ebi.ac.uk/pdbe/entry-files/downl
 const URL_CATH = (cathId: string) => `https://www.cathdb.info/version/v4_3_0/api/rest/id/${cathId}.pdb`
 
 type CaCbSelectionParam = {
-    chains: string[] | 'ALL';
-    residues: string[] | 'ALL';
-    atomNames: 'CA' | 'CB' | 'BOTH';
+  chains: string[] | 'ALL'
+  residues: string[] | 'ALL'
+  atomNames: 'CA' | 'CB' | 'BOTH'
 }
 
 export type AtomGroupInfo = {
-    id: number,
-    name: string,
-    resName: string,
-    resId: number,
-    chain: string,
-    coordinate: number[],
-    atomLabel: string,
-    resAuthId: number,
+  id: number
+  name: string
+  resName: string
+  resId: number
+  chain: string
+  coordinate: number[]
+  atomLabel: string
+  resAuthId: number
 }
 
 type ProtrusionData = {
-    normalCaCbAtomInfoArray: AtomGroupInfo[],
-    hydroCaCbAtomInfoArray: AtomGroupInfo[],
-    protrusionCbAtomInfoArray: AtomGroupInfo[],
-    hydroProtrusionCbAtomInfoArray: AtomGroupInfo[],
-    protrusionNeighborAtomInfoArray: AtomGroupInfo[][],
-    convexHullFaces: number[][],
-    edgePairs: number[][],
-    coinsertables: {
-        coordinates: number[],
-        labels: string[]
-    }
+  normalCaCbAtomInfoArray: AtomGroupInfo[]
+  hydroCaCbAtomInfoArray: AtomGroupInfo[]
+  protrusionCbAtomInfoArray: AtomGroupInfo[]
+  hydroProtrusionCbAtomInfoArray: AtomGroupInfo[]
+  protrusionNeighborAtomInfoArray: AtomGroupInfo[][]
+  convexHullFaces: number[][]
+  edgePairs: number[][]
+  coinsertables: {
+    coordinates: number[]
+    labels: string[]
+  }
 }
 
 export class MolStarWrapper {
+  private defaultSpec: PluginUISpec
+  private protrusionInitFlag: boolean
+  private customSelection: StructureSelection | undefined
+  plugin: PluginUIContext
 
-    private defaultSpec: PluginUISpec;
-    private protrusionInitFlag: boolean;
-    private customSelection: StructureSelection | undefined;
-    plugin: PluginUIContext;
+  representationStyle: RepresentationStyle = {
+    sequence: {}, //{ coloring: 'proteopedia-custom' }, // or just { }
+    hetGroups: { hide: true, kind: 'ball-and-stick' }, // or 'spacefill
+    water: { hide: true },
+    snfg3d: { hide: true }
+  }
 
-    representationStyle: RepresentationStyle = {
-        sequence: {},  //{ coloring: 'proteopedia-custom' }, // or just { }
-        hetGroups: { hide: true, kind: 'ball-and-stick' }, // or 'spacefill
-        water: { hide: true },
-        snfg3d: { hide: true },
-    };
+  private loadedParams: LoadParams = { pdbId: '', format: 'pdb', isBinary: false, assemblyId: '' }
+  private defaultProtrusionData: ProtrusionData | undefined
 
-    private loadedParams: LoadParams = { pdbId: '', format: 'pdb', isBinary: false, assemblyId: '' };
-    private defaultProtrusionData: ProtrusionData | undefined;
+  constructor() {
+    const defaultSpec = DefaultPluginUISpec()
 
-    constructor() {
-        const defaultSpec = DefaultPluginUISpec();
-
-        this.defaultSpec = {
-            ...defaultSpec,
-            animations: [
-                ...defaultSpec.animations || [],
-                // AnimateModelIndex, 
-                AnimateCameraSpin,
-            ],
-            layout: {
-                initial: {
-                    isExpanded: false,
-                    showControls: false,
-                    controlsDisplay: 'reactive',
-                    regionState: {
-                        left: "collapsed",
-                        top: "full",
-                        right: "full",
-                        bottom: "full",
-                    }
-                },
-            },
-            behaviors: [
-                ...defaultSpec.behaviors,
-                PluginSpec.Behavior(GeometryExport)
-            ],
-            components: {
-                ...defaultSpec.components,
-                remoteState: 'none', //remote server 
-            },
-            config: [
-                [PluginConfig.Viewport.ShowAnimation, false],
-                [PluginConfig.VolumeStreaming.Enabled, false],  //remove volume streaming 
-            ]
+    this.defaultSpec = {
+      ...defaultSpec,
+      animations: [
+        ...(defaultSpec.animations || []),
+        // AnimateModelIndex,
+        AnimateCameraSpin
+      ],
+      layout: {
+        initial: {
+          isExpanded: false,
+          showControls: false,
+          controlsDisplay: 'reactive',
+          regionState: {
+            left: 'collapsed',
+            top: 'full',
+            right: 'full',
+            bottom: 'full'
+          }
         }
-
-        this.plugin = new PluginUIContext(this.defaultSpec);
-        this.protrusionInitFlag = false;
+      },
+      behaviors: [...defaultSpec.behaviors, PluginSpec.Behavior(GeometryExport)],
+      components: {
+        ...defaultSpec.components,
+        remoteState: 'none' //remote server
+      },
+      config: [
+        [PluginConfig.Viewport.ShowAnimation, false],
+        [PluginConfig.VolumeStreaming.Enabled, false] //remove volume streaming
+      ]
     }
 
-    // call to bind HTMLElement
-    async init(targetId: string, options?: {
-        customColorList?: number[]
-    }) {
-        this.plugin = await createPluginUI(document.getElementById(targetId)!, this.defaultSpec);
+    this.plugin = new PluginUIContext(this.defaultSpec)
+    this.protrusionInitFlag = false
+  }
 
-        // const customColoring = createProteopediaCustomTheme((options && options.customColorList) || []);
-        // this.plugin.representation.structure.themes.colorThemeRegistry.add(customColoring);
-        // this.plugin.representation.structure.themes.colorThemeRegistry.add(EvolutionaryConservation.colorThemeProvider!);
-        // this.plugin.managers.lociLabels.addProvider(EvolutionaryConservation.labelProvider!);
-        // this.plugin.customModelProperties.register(EvolutionaryConservation.propertyProvider, true);
+  // call to bind HTMLElement
+  async init(
+    targetId: string,
+    options?: {
+      customColorList?: number[]
+    }
+  ) {
+    this.plugin = await createPluginUI(document.getElementById(targetId)!, this.defaultSpec)
+
+    // const customColoring = createProteopediaCustomTheme((options && options.customColorList) || []);
+    // this.plugin.representation.structure.themes.colorThemeRegistry.add(customColoring);
+    // this.plugin.representation.structure.themes.colorThemeRegistry.add(EvolutionaryConservation.colorThemeProvider!);
+    // this.plugin.managers.lociLabels.addProvider(EvolutionaryConservation.labelProvider!);
+    // this.plugin.customModelProperties.register(EvolutionaryConservation.propertyProvider, true);
+  }
+
+  // call to load a structure
+  async load({ pdbId, format = 'pdb', isBinary = false, assemblyId = '' }: LoadParams) {
+    const url = validCathId(pdbId) ? URL_CATH(pdbId) : format == 'pdb' ? URL_PDB(pdbId) : URL_BCIF(pdbId)
+    const state = this.plugin!.state.data
+
+    if (this.loadedParams.pdbId !== pdbId || this.loadedParams.format !== format) {
+      // remove current whole tree
+      await PluginCommands.State.RemoveObject(this.plugin, { state, ref: state.tree.root.ref })
+      const modelTree = this.model(this.download(state.build().toRoot(), url, isBinary, pdbId.toUpperCase()), format)
+      await this.applyState(modelTree)
+      const structureTree = this.structure(assemblyId)
+      await this.applyState(structureTree)
     }
 
-    // call to load a structure
-    async load({ pdbId, format = 'pdb', isBinary = false, assemblyId = '' }: LoadParams) {
-        let url = validCathId(pdbId) ? URL_CATH(pdbId) : format == 'pdb' ? URL_PDB(pdbId) : URL_BCIF(pdbId);
-        const state = this.plugin!.state.data;
+    await this.updateStyle(this.representationStyle) // show the model
+    // const model = this.getObj<PluginStateObject.Molecule.Model>('model');
+    this.loadedParams = { pdbId, format, assemblyId }
+    this.protrusionInitFlag = false // reload
+    this.customSelection = undefined
+  }
 
-        if (this.loadedParams.pdbId !== pdbId || this.loadedParams.format !== format) {
-            // remove current whole tree
-            await PluginCommands.State.RemoveObject(this.plugin, { state, ref: state.tree.root.ref });
-            const modelTree = this.model(this.download(state.build().toRoot(), url, isBinary, pdbId.toUpperCase()), format);
-            await this.applyState(modelTree);
-            const structureTree = this.structure(assemblyId);
-            await this.applyState(structureTree);
-        }
+  async loadFile(file: File, isBinary = false, assemblyId = '') {
+    const state = this.plugin!.state.data
+    const format = file.name.endsWith('.cif') ? 'cif' : file.name.endsWith('.ply') ? 'ply' : 'pdb'
 
-        await this.updateStyle(this.representationStyle);  // show the model
-        // const model = this.getObj<PluginStateObject.Molecule.Model>('model');
-        this.loadedParams = { pdbId, format, assemblyId };
-        this.protrusionInitFlag = false;  // reload
-        this.customSelection = undefined;
+    // remove current whole tree
+    await PluginCommands.State.RemoveObject(this.plugin, { state, ref: state.tree.root.ref })
+    const modelTree = this.model(this.openFile(state.build().toRoot(), file, isBinary), format)
+    await this.applyState(modelTree)
+    const structureTree = this.structure(assemblyId)
+    await this.applyState(structureTree)
+
+    await this.updateStyle(this.representationStyle) // show the model
+    const model = this.getObj<PluginStateObject.Molecule.Model>('model')
+
+    // this.loadedParams = { pdbId: file.name, format, assemblyId };
+    this.protrusionInitFlag = false
+    this.customSelection = undefined
+  }
+
+  private openFile(b: StateBuilder.To<PSO.Root>, file: File, isBinary: boolean) {
+    return b.apply(StateTransforms.Data.ReadFile, { file: Asset.File(file), isBinary })
+  }
+
+  private download(b: StateBuilder.To<PSO.Root>, url: string, isBinary: boolean, label?: string) {
+    // StateTransforms.Data.ReadFile
+    return b.apply(StateTransforms.Data.Download, { url: Asset.Url(url), label: label, isBinary })
+  }
+
+  private model(b: StateBuilder.To<PSO.Data.Binary | PSO.Data.String>, format: SupportedFormats) {
+    //  ???
+    let parsed
+    if (format === 'cif') {
+      parsed = b.apply(StateTransforms.Data.ParseCif).apply(StateTransforms.Model.TrajectoryFromMmCif)
+    } else if (format === 'ply') {
+      return b
+        .apply(StateTransforms.Data.ParsePly)
+        .apply(StateTransforms.Model.ShapeFromPly)
+        .apply(StateTransforms.Representation.ShapeRepresentation3D, {
+          xrayShaded: true,
+          doubleSided: true,
+          coloring: { name: 'uniform', params: { color: ColorNames.orange } }
+        })
+    } else {
+      parsed = b.apply(StateTransforms.Model.TrajectoryFromPDB)
     }
 
+    return parsed.apply(StateTransforms.Model.ModelFromTrajectory, { modelIndex: 0 }, { ref: StateElements.Model })
+  }
 
-    async loadFile(file: File, isBinary = false, assemblyId = '') {
-        const state = this.plugin!.state.data;
-        const format = file.name.endsWith('.cif') ? 'cif' : file.name.endsWith('.ply') ? 'ply' : 'pdb';
+  private applyState(tree: StateBuilder) {
+    return PluginCommands.State.Update(this.plugin, { state: this.plugin.state.data, tree })
+  }
 
-        // remove current whole tree
-        await PluginCommands.State.RemoveObject(this.plugin, { state, ref: state.tree.root.ref });
-        const modelTree = this.model(this.openFile(state.build().toRoot(), file, isBinary), format);
-        await this.applyState(modelTree);
-        const structureTree = this.structure(assemblyId);
-        await this.applyState(structureTree);
+  getProtrusionInitFlag() {
+    return this.protrusionInitFlag
+  }
 
-        await this.updateStyle(this.representationStyle);  // show the model
-        const model = this.getObj<PluginStateObject.Molecule.Model>('model');
+  get state() {
+    return this.plugin.state.data
+  }
 
-        // this.loadedParams = { pdbId: file.name, format, assemblyId };
-        this.protrusionInitFlag = false;
-        this.customSelection = undefined;
+  private getObj<T extends StateObject>(ref: string): T['data'] {
+    const state = this.state
+    const cell = state.select(ref)[0]
+    if (!cell || !cell.obj) return void 0
+    return (cell.obj as T).data
+  }
+
+  private visual(_style?: RepresentationStyle, partial?: boolean) {
+    // check if structure exists
+    const structure = this.getObj<PluginStateObject.Molecule.Structure>(StateElements.Assembly)
+    if (!structure) return
+
+    const style = _style || {}
+    const update = this.state.build()
+
+    if (!partial || (partial && style.sequence)) {
+      const root = update.to(StateElements.Sequence)
+      if (style.sequence && style.sequence.hide) {
+        root.delete(StateElements.SequenceVisual)
+      } else {
+        root.applyOrUpdate(
+          StateElements.SequenceVisual,
+          StateTransforms.Representation.StructureRepresentation3D,
+          createStructureRepresentationParams(this.plugin, structure, {
+            type: (style.sequence && style.sequence.kind) || 'cartoon',
+            color: (style.sequence && style.sequence.coloring) || 'unit-index'
+          })
+        )
+      }
     }
 
-
-    private openFile(b: StateBuilder.To<PSO.Root>, file: File, isBinary: boolean) {
-        return b.apply(StateTransforms.Data.ReadFile, { file: Asset.File(file), isBinary });
-    }
-
-    private download(b: StateBuilder.To<PSO.Root>, url: string, isBinary: boolean, label?: string) {
-        // StateTransforms.Data.ReadFile
-        return b.apply(StateTransforms.Data.Download, { url: Asset.Url(url), label: label, isBinary });
-    }
-
-
-    private model(b: StateBuilder.To<PSO.Data.Binary | PSO.Data.String>, format: SupportedFormats) {
-        //  ???
-        let parsed
-        if (format === 'cif') {
-            parsed = b.apply(StateTransforms.Data.ParseCif).apply(StateTransforms.Model.TrajectoryFromMmCif)
-        } else if (format === 'ply') {
-            return b.apply(StateTransforms.Data.ParsePly).apply(StateTransforms.Model.ShapeFromPly).apply(StateTransforms.Representation.ShapeRepresentation3D, {
-                xrayShaded: true,
-                doubleSided: true, coloring: { name: 'uniform', params: { color: ColorNames.orange } }
+    if (!partial || (partial && style.hetGroups)) {
+      const root = update.to(StateElements.Het)
+      if (style.hetGroups && style.hetGroups.hide) {
+        root.delete(StateElements.HetVisual)
+      } else {
+        if (style.hetGroups && style.hetGroups.hide) {
+          root.delete(StateElements.HetVisual)
+        } else {
+          root.applyOrUpdate(
+            StateElements.HetVisual,
+            StateTransforms.Representation.StructureRepresentation3D,
+            createStructureRepresentationParams(this.plugin, structure, {
+              type: (style.hetGroups && style.hetGroups.kind) || 'ball-and-stick',
+              color: style.hetGroups && style.hetGroups.coloring
             })
+          )
+        }
+      }
+    }
+
+    if (!partial || (partial && style.snfg3d)) {
+      const root = update.to(StateElements.Het)
+      if (style.hetGroups && style.hetGroups.hide) {
+        root.delete(StateElements.HetVisual)
+      } else {
+        if (style.snfg3d && style.snfg3d.hide) {
+          root.delete(StateElements.Het3DSNFG)
         } else {
-            parsed = b.apply(StateTransforms.Model.TrajectoryFromPDB);
+          root.applyOrUpdate(
+            StateElements.Het3DSNFG,
+            StateTransforms.Representation.StructureRepresentation3D,
+            createStructureRepresentationParams(this.plugin, structure, { type: 'carbohydrate' })
+          )
         }
-
-        return parsed
-            .apply(StateTransforms.Model.ModelFromTrajectory, { modelIndex: 0 }, { ref: StateElements.Model });
+      }
     }
 
-    private applyState(tree: StateBuilder) {
-        return PluginCommands.State.Update(this.plugin, { state: this.plugin.state.data, tree });
+    if (!partial || (partial && style.water)) {
+      const root = update.to(StateElements.Water)
+      if (style.water && style.water.hide) {
+        root.delete(StateElements.WaterVisual)
+      } else {
+        root.applyOrUpdate(
+          StateElements.WaterVisual,
+          StateTransforms.Representation.StructureRepresentation3D,
+          createStructureRepresentationParams(this.plugin, structure, {
+            type: (style.water && style.water.kind) || 'ball-and-stick',
+            typeParams: { alpha: 0.51 },
+            color: style.water && style.water.coloring
+          })
+        )
+      }
     }
 
-    getProtrusionInitFlag() {
-        return this.protrusionInitFlag;
-    }
+    return update
+  }
 
-    get state() {
-        return this.plugin.state.data;
-    }
+  async updateStyle(style?: RepresentationStyle, partial?: boolean) {
+    const tree = this.visual(style, partial)
+    if (!tree) return
+    await PluginCommands.State.Update(this.plugin, { state: this.plugin.state.data, tree })
+  }
 
-    private getObj<T extends StateObject>(ref: string): T['data'] {
-        const state = this.state;
-        const cell = state.select(ref)[0];
-        if (!cell || !cell.obj) return void 0;
-        return (cell.obj as T).data;
-    }
+  private selectAtomicElement(caCbStructure: Structure, selParm: CaCbSelectionParam) {
+    // convert a ca/cb selection into an atomInfoArray
+    const l = StructureElement.Location.create<Unit.Atomic>(caCbStructure)
 
+    const atomInfoArray: AtomGroupInfo[] = []
 
-    private visual(_style?: RepresentationStyle, partial?: boolean) {
-        // check if structure exists 
-        const structure = this.getObj<PluginStateObject.Molecule.Structure>(StateElements.Assembly);
-        if (!structure) return;
+    if (selParm.chains != 'ALL' && selParm.chains.length == 0) return atomInfoArray // selParm.chains = []
+    if (selParm.residues != 'ALL' && selParm.residues.length == 0) return atomInfoArray // selParm.residues = []
 
-        const style = _style || {};
-        const update = this.state.build();
+    for (const unit of caCbStructure.units) {
+      if (unit.kind !== Unit.Kind.Atomic) continue
 
-        if (!partial || (partial && style.sequence)) {
-            const root = update.to(StateElements.Sequence);
-            if (style.sequence && style.sequence.hide) {
-                root.delete(StateElements.SequenceVisual);
-            } else {
-                root.applyOrUpdate(StateElements.SequenceVisual, StateTransforms.Representation.StructureRepresentation3D,
-                    createStructureRepresentationParams(this.plugin, structure, {
-                        type: (style.sequence && style.sequence.kind) || 'cartoon',
-                        color: (style.sequence && style.sequence.coloring) || 'unit-index'
-                    }));
-            }
-        }
+      l.unit = unit
 
-        if (!partial || (partial && style.hetGroups)) {
-            const root = update.to(StateElements.Het);
-            if (style.hetGroups && style.hetGroups.hide) {
-                root.delete(StateElements.HetVisual);
-            } else {
-                if (style.hetGroups && style.hetGroups.hide) {
-                    root.delete(StateElements.HetVisual);
-                } else {
-                    root.applyOrUpdate(StateElements.HetVisual, StateTransforms.Representation.StructureRepresentation3D,
-                        createStructureRepresentationParams(this.plugin, structure, {
-                            type: (style.hetGroups && style.hetGroups.kind) || 'ball-and-stick',
-                            color: style.hetGroups && style.hetGroups.coloring
-                        }));
+      const { elements } = unit
+      const chainsIt = Segmentation.transientSegments(unit.model.atomicHierarchy.chainAtomSegments, elements)
+      const residuesIt = Segmentation.transientSegments(unit.model.atomicHierarchy.residueAtomSegments, elements)
+
+      while (chainsIt.hasNext) {
+        const chainSegment = chainsIt.move()
+        l.element = elements[chainSegment.start]
+        const chainName = StructureProperties.chain.label_asym_id(l)
+        if (selParm.chains == 'ALL' || selParm.chains.includes(chainName)) {
+          residuesIt.setSegment(chainSegment)
+          while (residuesIt.hasNext) {
+            const residueSegment = residuesIt.move()
+            l.element = elements[residueSegment.start]
+            const resId = StructureProperties.residue.label_seq_id(l)
+
+            for (let j = residueSegment.start, _j = residueSegment.end; j < _j; j++) {
+              l.element = elements[j]
+              const resName = StructureProperties.atom.label_comp_id(l)
+              const atomName = StructureProperties.atom.label_atom_id(l)
+              const resAuthId = StructureProperties.residue.auth_seq_id(l)
+
+              if (selParm.residues == 'ALL' || selParm.residues.includes(resName)) {
+                if ((selParm.atomNames == 'BOTH' || selParm.atomNames == atomName) && ['CA', 'CB'].includes(atomName)) {
+                  //select only one CB when there are multiple
+                  const alt_id = StructureProperties.atom.label_alt_id(l)
+                  if (selParm.atomNames != 'CA' && alt_id != '' && alt_id != 'A') continue
+
+                  const i = l.element // global unique
+                  const coordinate = [
+                    l.unit.conformation.coordinates.x[i],
+                    l.unit.conformation.coordinates.y[i],
+                    l.unit.conformation.coordinates.z[i]
+                  ]
+
+                  const atomLabel = elementLabel(l, { granularity: 'element' })
+
+                  atomInfoArray.push({
+                    id: i,
+                    name: atomName,
+                    resName: resName,
+                    resId: resId,
+                    chain: chainName,
+                    coordinate: coordinate,
+                    resAuthId: resAuthId,
+                    atomLabel: elementLabel(l, { granularity: 'element' })
+                  })
                 }
+              }
+            } // residue
+          }
+        } // chain
+      }
+    }
+    return atomInfoArray
+  }
+
+  private calculateProtrusion(data: Structure) {
+    //select all CA and CB atoms from the protein
+    const selectionCaCb = Script.getStructureSelection(
+      (Q) =>
+        Q.struct.generator.atomGroups({
+          'atom-test': Q.core.logic.and([
+            Q.core.logic.not([Q.ammp('isHet')]),
+            Q.core.logic.or([
+              Q.core.rel.eq(['CA', Q.ammp('label_atom_id')]),
+              Q.core.rel.eq(['CB', Q.ammp('label_atom_id')])
+            ])
+          ])
+        }),
+      data
+    )
+
+    // convert the selected atoms into an AtomInfo array
+    const caCbAtomArray = this.selectAtomicElement(StructureSelection.unionStructure(selectionCaCb), {
+      chains: 'ALL',
+      residues: 'ALL',
+      atomNames: 'BOTH'
+    })
+
+    // calculate convex hull
+    console.time('calculating convex hull')
+    const convexHullFaces = qh(caCbAtomArray.map((a) => a.coordinate))
+    console.timeEnd('calculating convex hull')
+
+    // identify (hydrophobic) protrusions
+    const vertexIndices = new Set<number>(convexHullFaces.flat())
+    const sortedVertexIndices = Array.from(vertexIndices).sort((a, b) => a - b)
+    console.log(`convex hull info: faces ${convexHullFaces.length}, vertices ${vertexIndices.size}`)
+
+    const protrusionCbAtomInfoArray: AtomGroupInfo[] = []
+    const hydroProtrusionCbAtomInfoArray: AtomGroupInfo[] = []
+    const protrusionNeighborAtomInfoArray: AtomGroupInfo[][] = []
+
+    for (const i of sortedVertexIndices) {
+      if (caCbAtomArray[i].name == 'CB') {
+        // find a Cb vertex
+        let neighborCount = 0 // count for CA or CB atom
+        const neighborResidueMap = new Map<string, AtomGroupInfo>()
+        for (let j = 0; j < caCbAtomArray.length; j++) {
+          if (i != j && pointDistance(caCbAtomArray[i].coordinate, caCbAtomArray[j].coordinate) < DISTANCE_CUTOFF) {
+            neighborCount += 1 // NOTE: this will include protrusion's own CA
+            if (
+              `${caCbAtomArray[i].chain}|${caCbAtomArray[i].resId}` !=
+              `${caCbAtomArray[j].chain}|${caCbAtomArray[j].resId}`
+            ) {
+              neighborResidueMap.set(`${caCbAtomArray[j].chain}|${caCbAtomArray[j].resId}`, caCbAtomArray[j])
             }
+          }
         }
+        if (neighborCount < LOW_DENSITY_THRESHOLD) {
+          protrusionCbAtomInfoArray.push(caCbAtomArray[i])
+          protrusionNeighborAtomInfoArray.push(Array.from(neighborResidueMap.values()))
+          if (HYDROPHOBICS.includes(caCbAtomArray[i].resName)) {
+            // hydrophobic protusion
+            hydroProtrusionCbAtomInfoArray.push(caCbAtomArray[i])
+          }
+        }
+      }
+    }
 
-        if (!partial || (partial && style.snfg3d)) {
-            const root = update.to(StateElements.Het);
-            if (style.hetGroups && style.hetGroups.hide) {
-                root.delete(StateElements.HetVisual);
-            } else {
-                if (style.snfg3d && style.snfg3d.hide) {
-                    root.delete(StateElements.Het3DSNFG);
-                } else {
-                    root.applyOrUpdate(StateElements.Het3DSNFG, StateTransforms.Representation.StructureRepresentation3D,
-                        createStructureRepresentationParams(this.plugin, structure, { type: 'carbohydrate' }));
-                }
+    const edgePairs: number[][] = getEdges(convexHullFaces.flat()) //! indices in convex hull, not atom indices
+    const edgePairAtomId = edgePairs.map(
+      (pair: number[]) =>
+        // map convex hull vertex id to atom id, as string
+        `${caCbAtomArray[pair[0]].id}-${caCbAtomArray[pair[1]].id}`
+    )
+
+    const hydroCaCbAtomInfoArray = caCbAtomArray.filter((a) => HYDROPHOBICS.includes(a.resName))
+    const coinsertables = this.calculateCoinsertables(
+      edgePairAtomId,
+      hydroCaCbAtomInfoArray,
+      hydroProtrusionCbAtomInfoArray
+    )
+
+    return {
+      normalCaCbAtomInfoArray: caCbAtomArray,
+      hydroCaCbAtomInfoArray: hydroCaCbAtomInfoArray,
+      protrusionCbAtomInfoArray: protrusionCbAtomInfoArray,
+      hydroProtrusionCbAtomInfoArray: hydroProtrusionCbAtomInfoArray,
+      convexHullFaces: convexHullFaces,
+      protrusionNeighborAtomInfoArray: protrusionNeighborAtomInfoArray,
+
+      edgePairs: edgePairs,
+      coinsertables: coinsertables
+    }
+  }
+
+  private calculateCoinsertables(
+    edgePairAtomId: string[],
+    hydroCaCbAtomInfoArray: AtomGroupInfo[],
+    hydroProtrusionCbAtomInfoArray: AtomGroupInfo[]
+  ) {
+    const coinsertables: number[] = []
+    const coinsertableLabels: string[] = []
+    for (let i = 0; i < hydroProtrusionCbAtomInfoArray.length; i++) {
+      const resICb = hydroProtrusionCbAtomInfoArray[i]
+      const resICa = hydroCaCbAtomInfoArray.find(
+        (a) => a.chain == resICb.chain && a.resId == resICb.resId && a.name == 'CA'
+      )!
+      for (let j = i + 1; j < hydroProtrusionCbAtomInfoArray.length; j++) {
+        const resJCb = hydroProtrusionCbAtomInfoArray[j]
+        const resJCa = hydroCaCbAtomInfoArray.find(
+          (a) => a.chain == resJCb.chain && a.resId == resJCb.resId && a.name == 'CA'
+        )!
+        resPairLoop: for (const atomI of [resICb, resICa]) {
+          // CB is preferred
+          for (const atomJ of [resJCb, resJCa]) {
+            if (
+              edgePairAtomId.includes(`${atomI.id}-${atomJ.id}`) ||
+              edgePairAtomId.includes(`${atomJ.id}-${atomI.id}`)
+            ) {
+              coinsertables.push(...atomI.coordinate, ...atomJ.coordinate)
+              coinsertableLabels.push(atomI.atomLabel, atomJ.atomLabel)
+              break resPairLoop
             }
+          }
         }
+      }
+    }
 
-        if (!partial || (partial && style.water)) {
-            const root = update.to(StateElements.Water);
-            if (style.water && style.water.hide) {
-                root.delete(StateElements.WaterVisual);
-            } else {
-                root.applyOrUpdate(StateElements.WaterVisual, StateTransforms.Representation.StructureRepresentation3D,
-                    createStructureRepresentationParams(this.plugin, structure, {
-                        type: (style.water && style.water.kind) || 'ball-and-stick',
-                        typeParams: { alpha: 0.51 },
-                        color: style.water && style.water.coloring
-                    }));
-            }
+    return { coordinates: coinsertables, labels: coinsertableLabels }
+  }
+
+  private async initProtrusion() {
+    const data = this.plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj?.data
+    if (!data) return
+
+    const protrusionData = this.calculateProtrusion(data)
+
+    // hydrophobic Ca, Cb: small, orange
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.HydroCaCb, CreateSphere, {
+        centers: protrusionData.hydroCaCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        centersLabel: protrusionData.hydroCaCbAtomInfoArray.map((a) => a.atomLabel),
+        radius: 0.5,
+        sphereColor: ColorNames.orange,
+        stateLabel: ProtrusionVisualLabel.HydroCaCb
+      })
+      .commit()
+
+    // normal Ca Cb: small, gray
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.NormalCaCb, CreateSphere, {
+        centers: protrusionData.normalCaCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        centersLabel: protrusionData.normalCaCbAtomInfoArray.map((a) => a.atomLabel),
+        radius: 0.4,
+        sphereColor: ColorNames.gray,
+        stateLabel: ProtrusionVisualLabel.NormalCaCb
+      })
+      .commit()
+
+    // hydrophobe vertex: large, orange
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.HydroProtrusion, CreateSphere, {
+        centers: protrusionData.hydroProtrusionCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        centersLabel: protrusionData.hydroProtrusionCbAtomInfoArray.map((a) => a.atomLabel),
+        radius: 2,
+        sphereColor: ColorNames.orange,
+        stateLabel: ProtrusionVisualLabel.HydroProtrusion,
+        coinsertables: protrusionData.coinsertables.coordinates,
+        coinsertableLabel: protrusionData.coinsertables.labels
+      })
+      .commit()
+
+    // normal vertex Cb: large, gray
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.NormalProtrusion, CreateSphere, {
+        centers: protrusionData.protrusionCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        centersLabel: protrusionData.protrusionCbAtomInfoArray.map((a) => a.atomLabel),
+        radius: 1.2, // Modification: 1.8 -> 1.2 to have smaller non hydrophobic protrusions.
+        sphereColor: ColorNames.gray,
+        stateLabel: ProtrusionVisualLabel.NormalProtrusion
+      })
+      .commit()
+
+    // convex hull
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.ConvexHull, CreateConvexHull, {
+        vertices: protrusionData.normalCaCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        verticesLabel: protrusionData.normalCaCbAtomInfoArray.map((a) => a.atomLabel),
+        indices: protrusionData.convexHullFaces.flat(),
+        opacity: 0.7,
+        edgePairs: protrusionData.edgePairs.flat()
+      })
+      .commit()
+
+    // hide all the new visualizations at the initial time
+
+    const model = this.plugin.managers.structure.hierarchy.current.structures[0].model!
+    const reprList = model.genericRepresentations!
+    for (let i = 0; i < reprList.length; i++) {
+      PluginCommands.State.ToggleVisibility(this.plugin, {
+        state: reprList[i].cell.parent!,
+        ref: reprList[i].cell.transform.ref
+      })
+    }
+
+    this.protrusionInitFlag = true
+    this.defaultProtrusionData = protrusionData
+  }
+
+  selectHydroProtrusionNeighbors(isChecked: boolean) {
+    if (!this.protrusionInitFlag) return
+
+    const protrusionData = this.customSelection
+      ? this.calculateProtrusion(StructureSelection.unionStructure(this.customSelection))
+      : this.defaultProtrusionData!
+
+    // merge all the neighbors of hydrophobic protrusions into one list
+    const hydroProtrusionNeighbors = new Map<string, Set<number>>() // <chain, [resId,...]>
+    for (let i = 0; i < protrusionData.protrusionCbAtomInfoArray.length; i++) {
+      const protrusion = protrusionData.protrusionCbAtomInfoArray[i]
+      if (HYDROPHOBICS.includes(protrusion.resName)) {
+        const neighbors = protrusionData.protrusionNeighborAtomInfoArray[i]
+        for (const neighbor of neighbors) {
+          let chainResidueSet = hydroProtrusionNeighbors.get(neighbor.chain)
+          if (chainResidueSet) {
+            chainResidueSet.add(neighbor.resAuthId) // use auth_seq_id
+          } else {
+            chainResidueSet = new Set([neighbor.resAuthId])
+          }
+          hydroProtrusionNeighbors.set(neighbor.chain, chainResidueSet)
         }
-
-        return update;
+      }
     }
 
+    // convert to Mol*'s selection
+    const data = this.plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj?.data
+    if (!data) return
 
-    async updateStyle(style?: RepresentationStyle, partial?: boolean) {
-        const tree = this.visual(style, partial);
-        if (!tree) return;
-        await PluginCommands.State.Update(this.plugin, { state: this.plugin.state.data, tree });
+    const locis: StructureElement.Loci[] = []
+    for (const chain of Array.from(hydroProtrusionNeighbors.keys())) {
+      const residueIds = Array.from(hydroProtrusionNeighbors.get(chain)!)
+      const selection = Script.getStructureSelection(
+        (Q) =>
+          Q.struct.generator.atomGroups({
+            'residue-test': Q.core.set.has([Q.set(...residueIds), Q.ammp('auth_seq_id')]),
+            'chain-test': Q.core.rel.eq([chain, Q.ammp('label_asym_id')])
+          }),
+        data
+      )
+      locis.push(StructureSelection.toLociWithSourceUnits(selection))
     }
 
+    // union the locis of each chain
+    let loci = locis[0]
+    if (locis.length > 1) {
+      let i = 1
+      while (i < locis.length) {
+        loci = StructureElement.Loci.union(loci, locis[i])
+        i++
+      }
+    }
+    isChecked
+      ? this.plugin.managers.interactivity.lociSelects.select({ loci })
+      : this.plugin.managers.interactivity.lociSelects.deselect({ loci })
+  }
 
-    private selectAtomicElement(caCbStructure: Structure, selParm: CaCbSelectionParam) {
-        // convert a ca/cb selection into an atomInfoArray
-        const l = StructureElement.Location.create<Unit.Atomic>(caCbStructure);
+  getNeighborList() {
+    if (!this.protrusionInitFlag) return []
 
-        let atomInfoArray: AtomGroupInfo[] = [];
+    const protrusionData = this.customSelection
+      ? this.calculateProtrusion(StructureSelection.unionStructure(this.customSelection))
+      : this.defaultProtrusionData!
 
-        if (selParm.chains != 'ALL' && selParm.chains.length == 0) return atomInfoArray;  // selParm.chains = []
-        if (selParm.residues != 'ALL' && selParm.residues.length == 0) return atomInfoArray;  // selParm.residues = []
+    const neighborDataSource: NeighborTableDataSource[] = []
+    for (let i = 0; i < protrusionData.protrusionNeighborAtomInfoArray.length; i++) {
+      const protrusion = protrusionData.protrusionCbAtomInfoArray[i]
+      const neighborArray = protrusionData.protrusionNeighborAtomInfoArray[i]
+      const neighborStr = neighborArray.map((a) => `${a.chain}|${a.resName}-${a.resAuthId}`).join(' ')
+      const neighborData = {
+        protrusionId: i + 1,
+        chain: protrusion.chain,
+        resName: protrusion.resName,
+        resAuthId: protrusion.resAuthId,
+        neighbours: neighborStr
+      }
+      neighborDataSource.push(neighborData)
+    }
+    return neighborDataSource
+  }
 
-        for (const unit of caCbStructure.units) {
-            if (unit.kind !== Unit.Kind.Atomic) continue;
+  async toggleProtrusion(reprRef: string) {
+    if (!this.protrusionInitFlag) {
+      await this.initProtrusion()
+    }
+    const model = this.plugin.managers.structure.hierarchy.current.structures[0].model
+    if (!model) return
+    const reprList = model.genericRepresentations!
+    for (let i = 0; i < reprList.length; i++) {
+      const ref = reprList[i].cell.transform.ref
+      if (reprRef == ref) {
+        PluginCommands.State.ToggleVisibility(this.plugin, { state: reprList[i].cell.parent!, ref: reprRef })
+        break
+      }
+    }
+  }
 
-            l.unit = unit;
+  async togggleEdges(reprRef: ProtrusionVisualRef) {
+    const oldParams = this.getObj<PluginStateObject.Shape.Representation3D>(reprRef).sourceData as any
+    const newParams = { ...(oldParams as object), showEdges: !oldParams.showEdges } // flip drawEdge
+    const transfer = reprRef == ProtrusionVisualRef.ConvexHull ? CreateConvexHull : CreateSphere
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(reprRef, transfer, {
+        ...newParams
+      })
+      .commit()
+  }
 
-            const { elements } = unit;
-            const chainsIt = Segmentation.transientSegments(unit.model.atomicHierarchy.chainAtomSegments, elements);
-            const residuesIt = Segmentation.transientSegments(unit.model.atomicHierarchy.residueAtomSegments, elements);
+  async changeOpacity(opacity: number) {
+    const oldParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.ConvexHull)
+      .sourceData as any
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.ConvexHull, CreateConvexHull, {
+        ...oldParams,
+        opacity: opacity
+      })
+      .commit()
+  }
 
-            while (chainsIt.hasNext) {
-                const chainSegment = chainsIt.move();
-                l.element = elements[chainSegment.start];
-                const chainName = StructureProperties.chain.label_asym_id(l);
-                if (selParm.chains == 'ALL' || selParm.chains.includes(chainName)) {
-                    residuesIt.setSegment(chainSegment);
-                    while (residuesIt.hasNext) {
-                        const residueSegment = residuesIt.move();
-                        l.element = elements[residueSegment.start];
-                        const resId = StructureProperties.residue.label_seq_id(l);
+  private async updateProtrusionData(data?: Structure) {
+    if (!this.protrusionInitFlag) await this.initProtrusion()
 
-                        for (let j = residueSegment.start, _j = residueSegment.end; j < _j; j++) {
-                            l.element = elements[j];
-                            const resName = StructureProperties.atom.label_comp_id(l);
-                            const atomName = StructureProperties.atom.label_atom_id(l);
-                            const resAuthId = StructureProperties.residue.auth_seq_id(l);
+    const newProtrusionData = data ? this.calculateProtrusion(data) : this.defaultProtrusionData!
 
-                            if (selParm.residues == 'ALL' || selParm.residues.includes(resName)) {
-                                if ((selParm.atomNames == 'BOTH' || selParm.atomNames == atomName) &&
-                                    ['CA', 'CB'].includes(atomName)) {
+    // hydrophobic Ca, Cb
+    const oldHydroCaCbParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.HydroCaCb)
+      .sourceData as any
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.HydroCaCb, CreateSphere, {
+        ...oldHydroCaCbParams,
+        centers: newProtrusionData.hydroCaCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        centersLabel: newProtrusionData.hydroCaCbAtomInfoArray.map((a) => a.atomLabel)
+      })
+      .commit()
 
-                                    //select only one CB when there are multiple
-                                    const alt_id = StructureProperties.atom.label_alt_id(l);
-                                    if (selParm.atomNames != 'CA' && alt_id != "" && alt_id != 'A')
-                                        continue
+    // normal Ca Cb
+    const oldNormalCaCbParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.NormalCaCb)
+      .sourceData as any
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.NormalCaCb, CreateSphere, {
+        ...oldNormalCaCbParams,
+        centers: newProtrusionData.normalCaCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        centersLabel: newProtrusionData.normalCaCbAtomInfoArray.map((a) => a.atomLabel)
+      })
+      .commit()
 
-                                    const i = l.element  // global unique 
-                                    const coordinate = [
-                                        l.unit.conformation.coordinates.x[i],
-                                        l.unit.conformation.coordinates.y[i],
-                                        l.unit.conformation.coordinates.z[i]
-                                    ];
+    // hydrophobe vertex: large, orange
+    const oldHydroProtrusionParams = this.getObj<PluginStateObject.Shape.Representation3D>(
+      ProtrusionVisualRef.HydroProtrusion
+    ).sourceData as any
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.HydroProtrusion, CreateSphere, {
+        ...oldHydroProtrusionParams,
+        centers: newProtrusionData.hydroProtrusionCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        centersLabel: newProtrusionData.hydroProtrusionCbAtomInfoArray.map((a) => a.atomLabel),
+        coinsertables: newProtrusionData.coinsertables.coordinates,
+        coinsertableLabel: newProtrusionData.coinsertables.labels
+      })
+      .commit()
 
-                                    const atomLabel = elementLabel(l, { granularity: 'element' });
+    // normal vertex Cb: large, gray
+    const oldNormalProtrusionParams = this.getObj<PluginStateObject.Shape.Representation3D>(
+      ProtrusionVisualRef.NormalProtrusion
+    ).sourceData as any
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.NormalProtrusion, CreateSphere, {
+        ...oldNormalProtrusionParams,
+        centers: newProtrusionData.protrusionCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        centersLabel: newProtrusionData.protrusionCbAtomInfoArray.map((a) => a.atomLabel)
+      })
+      .commit()
 
-                                    atomInfoArray.push({
-                                        id: i,
-                                        name: atomName,
-                                        resName: resName,
-                                        resId: resId,
-                                        chain: chainName,
-                                        coordinate: coordinate,
-                                        resAuthId: resAuthId,
-                                        atomLabel: elementLabel(l, { granularity: 'element' })
-                                    });
-                                }
-                            }
-                        } // residue               
-                    }
-                } // chain   
-            }
+    // convex hull
+    const oldConvexHullParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.ConvexHull)
+      .sourceData as any
+    await this.plugin
+      .build()
+      .to(StateElements.Model)
+      .applyOrUpdate(ProtrusionVisualRef.ConvexHull, CreateConvexHull, {
+        ...oldConvexHullParams,
+        vertices: newProtrusionData.normalCaCbAtomInfoArray.map((a) => a.coordinate).flat(),
+        verticesLabel: newProtrusionData.normalCaCbAtomInfoArray.map((a) => a.atomLabel),
+        indices: newProtrusionData.convexHullFaces.flat(),
+        edgePairs: newProtrusionData.edgePairs.flat()
+      })
+      .commit()
+  }
+
+  isSelectionEmpty() {
+    return this.customSelection == undefined
+  }
+
+  async setCustomSelection() {
+    const data = this.plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj?.data
+    if (!data) return
+    const params = StructureComponentManager.getAddParams(this.plugin)
+    const values = ParamDefinition.getDefaultValues(params)
+    this.plugin.runTask(
+      Task.create('Query Component', async (taskCtx) => {
+        const struSel = await values.selection.getSelection(this.plugin, taskCtx, data)
+        if (!StructureSelection.isEmpty(struSel)) {
+          this.customSelection = struSel
         }
-        return atomInfoArray;
+      })
+    )
+  }
+
+  async reCalculate(useDefault = false) {
+    if (useDefault) {
+      // reset to default protrusion
+      this.updateProtrusionData()
+      // show sequence
+      const str = this.plugin.managers.structure.hierarchy.current.structures
+      PluginCommands.State.ToggleVisibility(this.plugin, {
+        state: str[0].model?.cell.parent!,
+        ref: StateElements.Sequence
+      })
+
+      // remove user-selected component
+      const componentGroups = this.plugin.managers.structure.hierarchy.currentComponentGroups
+      const customSelection = componentGroups.map((g) => g[0]).filter((g) => g.cell.obj!.label == 'Custom Selection')
+      this.plugin.managers.structure.hierarchy.remove(customSelection)
+      this.customSelection = undefined
+    } else {
+      const params = StructureComponentManager.getAddParams(this.plugin)
+      const values = ParamDefinition.getDefaultValues(params)
+
+      // recalculate protrusion
+      if (this.customSelection) {
+        this.updateProtrusionData(StructureSelection.unionStructure(this.customSelection))
+
+        // add new component to the state tree
+        const str = this.plugin.managers.structure.hierarchy.current.structures
+        values.options.checkExisting = true
+        values.representation = 'cartoon'
+        // use default label: 'Custom Selection'
+        this.plugin.managers.structure.component.add(values, str)
+
+        // hide sequence
+        PluginCommands.State.ToggleVisibility(this.plugin, {
+          state: str[0].model?.cell.parent!,
+          ref: StateElements.Sequence
+        })
+      } else {
+        console.warn('empty selection')
+      }
+    }
+  }
+
+  private structure(assemblyId: string) {
+    const model = this.state.build().to(StateElements.Model)
+    const props = {
+      type: assemblyId
+        ? {
+            name: 'assembly' as const,
+            params: { id: assemblyId }
+          }
+        : {
+            name: 'model' as const,
+            params: {}
+          }
     }
 
-    private calculateProtrusion(data: Structure) {
-        //select all CA and CB atoms from the protein
-        const selectionCaCb = Script.getStructureSelection(Q => Q.struct.generator.atomGroups({
-            'atom-test': Q.core.logic.and([
-                Q.core.logic.not([Q.ammp('isHet')]),
-                Q.core.logic.or([
-                    Q.core.rel.eq(['CA', Q.ammp('label_atom_id')]),
-                    Q.core.rel.eq(['CB', Q.ammp('label_atom_id')])
-                ])
-            ]),
-        }), data);
+    const s = model.apply(StateTransforms.Model.StructureFromModel, props, { ref: StateElements.Assembly })
 
-        // convert the selected atoms into an AtomInfo array
-        const caCbAtomArray = this.selectAtomicElement(StructureSelection.unionStructure(selectionCaCb),
-            { chains: 'ALL', residues: 'ALL', atomNames: 'BOTH' })
+    s.apply(StateTransforms.Model.StructureComplexElement, { type: 'atomic-sequence' }, { ref: StateElements.Sequence })
+    s.apply(StateTransforms.Model.StructureComplexElement, { type: 'atomic-het' }, { ref: StateElements.Het })
+    s.apply(StateTransforms.Model.StructureComplexElement, { type: 'water' }, { ref: StateElements.Water })
 
-        // calculate convex hull
-        console.time('calculating convex hull');
-        const convexHullFaces = qh(caCbAtomArray.map(a => a.coordinate));
-        console.timeEnd('calculating convex hull');
-
-        // identify (hydrophobic) protrusions
-        const vertexIndices = new Set<number>(convexHullFaces.flat());
-        const sortedVertexIndices = Array.from(vertexIndices).sort((a, b) => a - b);
-        console.log(`convex hull info: faces ${convexHullFaces.length}, vertices ${vertexIndices.size}`);
-
-        const protrusionCbAtomInfoArray: AtomGroupInfo[] = [];
-        const hydroProtrusionCbAtomInfoArray: AtomGroupInfo[] = [];
-        const protrusionNeighborAtomInfoArray: AtomGroupInfo[][] = [];
-
-        for (let i of sortedVertexIndices) {
-            if (caCbAtomArray[i].name == 'CB') { // find a Cb vertex
-                let neighborCount = 0;  // count for CA or CB atom
-                let neighborResidueMap = new Map<string, AtomGroupInfo>();
-                for (let j = 0; j < caCbAtomArray.length; j++) {
-                    if (i != j && pointDistance(caCbAtomArray[i].coordinate, caCbAtomArray[j].coordinate) < DISTANCE_CUTOFF) {
-                        neighborCount += 1;  // NOTE: this will include protrusion's own CA                        
-                        if (`${caCbAtomArray[i].chain}|${caCbAtomArray[i].resId}` != `${caCbAtomArray[j].chain}|${caCbAtomArray[j].resId}`) {
-                            neighborResidueMap.set(`${caCbAtomArray[j].chain}|${caCbAtomArray[j].resId}`, caCbAtomArray[j]);
-                        }
-                    }
-                }
-                if (neighborCount < LOW_DENSITY_THRESHOLD) {
-                    protrusionCbAtomInfoArray.push(caCbAtomArray[i]);
-                    protrusionNeighborAtomInfoArray.push(Array.from(neighborResidueMap.values()))
-                    if (HYDROPHOBICS.includes(caCbAtomArray[i].resName)) { // hydrophobic protusion
-                        hydroProtrusionCbAtomInfoArray.push(caCbAtomArray[i])
-                    }
-                }
-            }
-        }
-
-        const edgePairs: number[][] = getEdges(convexHullFaces.flat()) //! indices in convex hull, not atom indices
-        const edgePairAtomId = edgePairs.map((pair: number[]) =>
-            // map convex hull vertex id to atom id, as string 
-            `${caCbAtomArray[pair[0]].id}-${caCbAtomArray[pair[1]].id}`);
-
-        const hydroCaCbAtomInfoArray = caCbAtomArray.filter(a => HYDROPHOBICS.includes(a.resName))
-        const coinsertables = this.calculateCoinsertables(edgePairAtomId, hydroCaCbAtomInfoArray, hydroProtrusionCbAtomInfoArray)
-
-        return {
-            normalCaCbAtomInfoArray: caCbAtomArray,
-            hydroCaCbAtomInfoArray: hydroCaCbAtomInfoArray,
-            protrusionCbAtomInfoArray: protrusionCbAtomInfoArray,
-            hydroProtrusionCbAtomInfoArray: hydroProtrusionCbAtomInfoArray,
-            convexHullFaces: convexHullFaces,
-            protrusionNeighborAtomInfoArray: protrusionNeighborAtomInfoArray,
-
-            edgePairs: edgePairs,
-            coinsertables: coinsertables,
-        }
-    }
-
-
-    private calculateCoinsertables(edgePairAtomId: string[], hydroCaCbAtomInfoArray: AtomGroupInfo[], hydroProtrusionCbAtomInfoArray: AtomGroupInfo[]) {
-        let coinsertables: number[] = []
-        let coinsertableLabels: string[] = []
-        for (let i = 0; i < hydroProtrusionCbAtomInfoArray.length; i++) {
-            const resICb = hydroProtrusionCbAtomInfoArray[i];
-            const resICa = hydroCaCbAtomInfoArray.find(a =>
-                a.chain == resICb.chain && a.resId == resICb.resId && a.name == 'CA')!
-            for (let j = i + 1; j < hydroProtrusionCbAtomInfoArray.length; j++) {
-                const resJCb = hydroProtrusionCbAtomInfoArray[j];
-                const resJCa = hydroCaCbAtomInfoArray.find(a =>
-                    a.chain == resJCb.chain && a.resId == resJCb.resId && a.name == 'CA')!
-                resPairLoop:
-                for (let atomI of [resICb, resICa]) {  // CB is preferred
-                    for (let atomJ of [resJCb, resJCa]) {
-                        if (edgePairAtomId.includes(`${atomI.id}-${atomJ.id}`) ||
-                            edgePairAtomId.includes(`${atomJ.id}-${atomI.id}`)) {
-                            coinsertables.push(...atomI.coordinate, ...atomJ.coordinate);
-                            coinsertableLabels.push(atomI.atomLabel, atomJ.atomLabel);
-                            break resPairLoop
-                        }
-                    }
-                }
-            }
-        }
-
-        return { coordinates: coinsertables, labels: coinsertableLabels }
-    }
-
-    private async initProtrusion() {
-        const data = this.plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj?.data;
-        if (!data) return;
-
-        const protrusionData = this.calculateProtrusion(data);
-
-        // hydrophobic Ca, Cb: small, orange
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.HydroCaCb, CreateSphere, {
-            centers: protrusionData.hydroCaCbAtomInfoArray.map(a => a.coordinate).flat(),
-            centersLabel: protrusionData.hydroCaCbAtomInfoArray.map(a => a.atomLabel),
-            radius: 0.5,
-            sphereColor: ColorNames.orange,
-            stateLabel: ProtrusionVisualLabel.HydroCaCb
-        }).commit();
-
-        // normal Ca Cb: small, gray
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.NormalCaCb, CreateSphere, {
-            centers: protrusionData.normalCaCbAtomInfoArray.map(a => a.coordinate).flat(),
-            centersLabel: protrusionData.normalCaCbAtomInfoArray.map(a => a.atomLabel),
-            radius: 0.4,
-            sphereColor: ColorNames.gray,
-            stateLabel: ProtrusionVisualLabel.NormalCaCb
-        }).commit();
-
-        // hydrophobe vertex: large, orange
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.HydroProtrusion, CreateSphere, {
-            centers: protrusionData.hydroProtrusionCbAtomInfoArray.map(a => a.coordinate).flat(),
-            centersLabel: protrusionData.hydroProtrusionCbAtomInfoArray.map(a => a.atomLabel),
-            radius: 2,
-            sphereColor: ColorNames.orange,
-            stateLabel: ProtrusionVisualLabel.HydroProtrusion,
-            coinsertables: protrusionData.coinsertables.coordinates,
-            coinsertableLabel: protrusionData.coinsertables.labels
-        }).commit();
-
-        // normal vertex Cb: large, gray
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.NormalProtrusion, CreateSphere, {
-            centers: protrusionData.protrusionCbAtomInfoArray.map(a => a.coordinate).flat(),
-            centersLabel: protrusionData.protrusionCbAtomInfoArray.map(a => a.atomLabel),
-            radius: 1.2, // Modification: 1.8 -> 1.2 to have smaller non hydrophobic protrusions. 
-            sphereColor: ColorNames.gray,
-            stateLabel: ProtrusionVisualLabel.NormalProtrusion
-        }).commit();
-
-        // convex hull
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.ConvexHull, CreateConvexHull, {
-            vertices: protrusionData.normalCaCbAtomInfoArray.map(a => a.coordinate).flat(),
-            verticesLabel: protrusionData.normalCaCbAtomInfoArray.map(a => a.atomLabel),
-            indices: protrusionData.convexHullFaces.flat(),
-            opacity: 0.7,
-            edgePairs: protrusionData.edgePairs.flat(),
-        }).commit();
-
-        // hide all the new visualizations at the initial time
-
-        const model = this.plugin.managers.structure.hierarchy.current.structures[0].model!;
-        const reprList = model.genericRepresentations!
-        for (let i = 0; i < reprList.length; i++) {
-            PluginCommands.State.ToggleVisibility(this.plugin,
-                { state: reprList[i].cell.parent!, ref: reprList[i].cell.transform.ref });
-        }
-
-        this.protrusionInitFlag = true
-        this.defaultProtrusionData = protrusionData
-    }
-
-
-    selectHydroProtrusionNeighbors(isChecked: boolean) {
-        if (!this.protrusionInitFlag) return;
-
-        const protrusionData = this.customSelection
-            ? this.calculateProtrusion(StructureSelection.unionStructure(this.customSelection))
-            : this.defaultProtrusionData!;
-
-        // merge all the neighbors of hydrophobic protrusions into one list
-        const hydroProtrusionNeighbors = new Map<string, Set<number>>();  // <chain, [resId,...]>
-        for (let i = 0; i < protrusionData.protrusionCbAtomInfoArray.length; i++) {
-            const protrusion = protrusionData.protrusionCbAtomInfoArray[i];
-            if (HYDROPHOBICS.includes(protrusion.resName)) {
-                const neighbors = protrusionData.protrusionNeighborAtomInfoArray[i];
-                for (let neighbor of neighbors) {
-                    let chainResidueSet = hydroProtrusionNeighbors.get(neighbor.chain);
-                    if (chainResidueSet) {
-                        chainResidueSet.add(neighbor.resAuthId) // use auth_seq_id
-                    } else {
-                        chainResidueSet = new Set([neighbor.resAuthId])
-                    }
-                    hydroProtrusionNeighbors.set(neighbor.chain, chainResidueSet)
-                }
-            }
-        }
-
-        // convert to Mol*'s selection
-        const data = this.plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj?.data;
-        if (!data) return;
-
-        let locis: StructureElement.Loci[] = [];
-        for (let chain of Array.from(hydroProtrusionNeighbors.keys())) {
-            const residueIds = Array.from(hydroProtrusionNeighbors.get(chain)!);
-            const selection = Script.getStructureSelection(Q => Q.struct.generator.atomGroups({
-                'residue-test': Q.core.set.has([Q.set(...residueIds), Q.ammp('auth_seq_id')]),
-                'chain-test': Q.core.rel.eq([chain, Q.ammp('label_asym_id')])
-            }), data);
-            locis.push(StructureSelection.toLociWithSourceUnits(selection));
-        }
-
-        // union the locis of each chain
-        let loci = locis[0];
-        if (locis.length > 1) {
-            let i = 1;
-            while (i < locis.length) {
-                loci = StructureElement.Loci.union(loci, locis[i]);
-                i++;
-            }
-        }
-        isChecked ?
-            this.plugin.managers.interactivity.lociSelects.select({ loci })
-            : this.plugin.managers.interactivity.lociSelects.deselect({ loci });
-    }
-
-
-    getNeighborList() {
-        if (!this.protrusionInitFlag) return [];
-
-        const protrusionData = this.customSelection
-            ? this.calculateProtrusion(StructureSelection.unionStructure(this.customSelection))
-            : this.defaultProtrusionData!;
-
-        let neighborDataSource: NeighborTableDataSource[] = [];
-        for (let i = 0; i < protrusionData.protrusionNeighborAtomInfoArray.length; i++) {
-            const protrusion = protrusionData.protrusionCbAtomInfoArray[i];
-            const neighborArray = protrusionData.protrusionNeighborAtomInfoArray[i];
-            const neighborStr = neighborArray.map(a => `${a.chain}|${a.resName}-${a.resAuthId}`).join(' ');
-            const neighborData = {
-                protrusionId: i + 1,
-                chain: protrusion.chain,
-                resName: protrusion.resName,
-                resAuthId: protrusion.resAuthId,
-                neighbours: neighborStr,
-            }
-            neighborDataSource.push(neighborData);
-        }
-        return neighborDataSource;
-    }
-
-
-    async toggleProtrusion(reprRef: string) {
-        if (!this.protrusionInitFlag) {
-            await this.initProtrusion();
-        }
-        const model = this.plugin.managers.structure.hierarchy.current.structures[0].model;
-        if (!model) return
-        const reprList = model.genericRepresentations!
-        for (let i = 0; i < reprList.length; i++) {
-            const ref = reprList[i].cell.transform.ref
-            if (reprRef == ref) {
-                PluginCommands.State.ToggleVisibility(this.plugin,
-                    { state: reprList[i].cell.parent!, ref: reprRef });
-                break
-            }
-        }
-    }
-
-
-    async togggleEdges(reprRef: ProtrusionVisualRef) {
-        const oldParams = this.getObj<PluginStateObject.Shape.Representation3D>(reprRef).sourceData as any;
-        const newParams = { ...oldParams as object, showEdges: !oldParams.showEdges }; // flip drawEdge
-        const transfer = reprRef == ProtrusionVisualRef.ConvexHull ? CreateConvexHull : CreateSphere;
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(reprRef, transfer, {
-            ...newParams
-        }).commit();
-    }
-
-    async changeOpacity(opacity: number) {
-        const oldParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.ConvexHull).sourceData as any;
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.ConvexHull, CreateConvexHull, {
-            ...oldParams,
-            opacity: opacity,
-        }).commit();
-    }
-
-
-    private async updateProtrusionData(data?: Structure) {
-        if (!this.protrusionInitFlag)
-            await this.initProtrusion()
-
-        const newProtrusionData = data ? this.calculateProtrusion(data) : this.defaultProtrusionData!;
-
-        // hydrophobic Ca, Cb
-        const oldHydroCaCbParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.HydroCaCb).sourceData as any;
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.HydroCaCb, CreateSphere, {
-            ...oldHydroCaCbParams,
-            centers: newProtrusionData.hydroCaCbAtomInfoArray.map(a => a.coordinate).flat(),
-            centersLabel: newProtrusionData.hydroCaCbAtomInfoArray.map(a => a.atomLabel),
-        }).commit();
-
-        // normal Ca Cb
-        const oldNormalCaCbParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.NormalCaCb).sourceData as any;
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.NormalCaCb, CreateSphere, {
-            ...oldNormalCaCbParams,
-            centers: newProtrusionData.normalCaCbAtomInfoArray.map(a => a.coordinate).flat(),
-            centersLabel: newProtrusionData.normalCaCbAtomInfoArray.map(a => a.atomLabel),
-        }).commit();
-
-        // hydrophobe vertex: large, orange
-        const oldHydroProtrusionParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.HydroProtrusion).sourceData as any;
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.HydroProtrusion, CreateSphere, {
-            ...oldHydroProtrusionParams,
-            centers: newProtrusionData.hydroProtrusionCbAtomInfoArray.map(a => a.coordinate).flat(),
-            centersLabel: newProtrusionData.hydroProtrusionCbAtomInfoArray.map(a => a.atomLabel),
-            coinsertables: newProtrusionData.coinsertables.coordinates,
-            coinsertableLabel: newProtrusionData.coinsertables.labels
-        }).commit();
-
-        // normal vertex Cb: large, gray
-        const oldNormalProtrusionParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.NormalProtrusion).sourceData as any;
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.NormalProtrusion, CreateSphere, {
-            ...oldNormalProtrusionParams,
-            centers: newProtrusionData.protrusionCbAtomInfoArray.map(a => a.coordinate).flat(),
-            centersLabel: newProtrusionData.protrusionCbAtomInfoArray.map(a => a.atomLabel),
-        }).commit();
-
-        // convex hull
-        const oldConvexHullParams = this.getObj<PluginStateObject.Shape.Representation3D>(ProtrusionVisualRef.ConvexHull).sourceData as any;
-        await this.plugin.build().to(StateElements.Model).applyOrUpdate(ProtrusionVisualRef.ConvexHull, CreateConvexHull, {
-            ...oldConvexHullParams,
-            vertices: newProtrusionData.normalCaCbAtomInfoArray.map(a => a.coordinate).flat(),
-            verticesLabel: newProtrusionData.normalCaCbAtomInfoArray.map(a => a.atomLabel),
-            indices: newProtrusionData.convexHullFaces.flat(),
-            edgePairs: newProtrusionData.edgePairs.flat(),
-        }).commit();
-    }
-
-
-    isSelectionEmpty() {
-        return this.customSelection == undefined
-    }
-
-    async setCustomSelection() {
-        const data = this.plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj?.data;
-        if (!data) return;
-        const params = StructureComponentManager.getAddParams(this.plugin);
-        const values = ParamDefinition.getDefaultValues(params);
-        this.plugin.runTask(
-            Task.create('Query Component', async taskCtx => {
-                const struSel = await values.selection.getSelection(this.plugin, taskCtx, data)
-                if (!StructureSelection.isEmpty(struSel)) {
-                    this.customSelection = struSel
-                }
-            }))
-    }
-
-    async reCalculate(useDefault = false) {
-        if (useDefault) { // reset to default protrusion 
-            this.updateProtrusionData();
-            // show sequence
-            const str = this.plugin.managers.structure.hierarchy.current.structures;
-            PluginCommands.State.ToggleVisibility(this.plugin,
-                { state: str[0].model?.cell.parent!, ref: StateElements.Sequence });
-
-            // remove user-selected component 
-            const componentGroups = this.plugin.managers.structure.hierarchy.currentComponentGroups;
-            const customSelection = componentGroups.map(g => g[0]).filter(g => g.cell.obj!.label == 'Custom Selection')
-            this.plugin.managers.structure.hierarchy.remove(customSelection);
-            this.customSelection = undefined
-        } else {
-            const params = StructureComponentManager.getAddParams(this.plugin);
-            const values = ParamDefinition.getDefaultValues(params);
-
-            // recalculate protrusion 
-            if (this.customSelection) {
-                this.updateProtrusionData(StructureSelection.unionStructure(this.customSelection))
-
-                // add new component to the state tree
-                const str = this.plugin.managers.structure.hierarchy.current.structures;
-                values.options.checkExisting = true;
-                values.representation = 'cartoon'
-                // use default label: 'Custom Selection'                                          
-                this.plugin.managers.structure.component.add(values, str);
-
-                // hide sequence
-                PluginCommands.State.ToggleVisibility(this.plugin,
-                    { state: str[0].model?.cell.parent!, ref: StateElements.Sequence });
-
-            } else {
-                console.warn('empty selection')
-            }
-        }
-    }
-
-    private structure(assemblyId: string) {
-        const model = this.state.build().to(StateElements.Model);
-        const props = {
-            type: assemblyId ? {
-                name: 'assembly' as const,
-                params: { id: assemblyId }
-            } : {
-                name: 'model' as const,
-                params: {}
-            }
-        };
-
-        const s = model
-            .apply(StateTransforms.Model.StructureFromModel, props, { ref: StateElements.Assembly });
-
-        s.apply(StateTransforms.Model.StructureComplexElement, { type: 'atomic-sequence' }, { ref: StateElements.Sequence });
-        s.apply(StateTransforms.Model.StructureComplexElement, { type: 'atomic-het' }, { ref: StateElements.Het });
-        s.apply(StateTransforms.Model.StructureComplexElement, { type: 'water' }, { ref: StateElements.Water });
-
-        return s;
-    }
-
+    return s
+  }
 }
